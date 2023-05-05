@@ -1,0 +1,18 @@
+project_name: ansibleparser
+builds:
+  - env: [CGO_ENABLED=0]
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+nfpms:
+- maintainer: Jay Townsend <jay@cybermon.uk>
+  description: A Go program that parses an Ansible core log file for failed tasks.
+  homepage: https://github.com/L1ghtn1ng/ansible-parser
+  license: GPLv3
+  formats:
+  - deb
+  - rpm
+  - archlinux
