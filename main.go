@@ -21,8 +21,8 @@ type LogEntry struct {
 func main() {
 	logFile := flag.String("logfile", "ansible.log", "Path to the Ansible log file")
 	mailServer := flag.String("mailserver", "vmta.example.com:25", "Mail server to use for email relay")
-	emailFrom := flag.String("emailfrom", "ansible.parser@example.com", "Email address of Ansible Server")
-	emailTo := flag.String("emailto", "foo@example.com", "Email address of recipient for the Ansible report")
+	emailFrom := flag.String("emailfrom", "", "Email address of Ansible Server")
+	emailTo := flag.String("emailto", "", "Email address of recipient for the Ansible report")
 	flag.Parse()
 
 	file, err := os.Open(*logFile)
