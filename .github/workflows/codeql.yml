@@ -20,18 +20,18 @@ on:
   schedule:
     - cron: "0 0 * * 1"
 
-permissions:
+
+permissions:  # added using https://github.com/step-security/secure-repo
   contents: read
-  security-events: write
 
 jobs:
   analyze:
+    permissions:
+      actions: read  # for github/codeql-action/init to get workflow details
+      contents: read  # for actions/checkout to fetch code
+      security-events: write  # for github/codeql-action/autobuild to send a status report
     name: Analyze
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
 
     strategy:
       fail-fast: false
