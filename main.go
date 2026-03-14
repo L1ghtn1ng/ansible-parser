@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/smtp"
 	"os"
@@ -29,51 +29,92 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
-
-	var buffer bytes.Buffer
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, "failed:") {
-			parts := strings.SplitN(line, "=>", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			var entry LogEntry
-			err := json.Unmarshal([]byte(parts[1]), &entry)
-			if err != nil {
-				continue
-			}
-			hostParts := strings.SplitN(parts[0], "|", 2)
-			buffer.WriteString(fmt.Sprintf("Host: %s\nMessage: %s\n\n", strings.TrimSpace(hostParts[1]), entry.Msg))
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			log.Fatal(err)
 		}
-	}
+	}(file)
 
-	if err := scanner.Err(); err != nil {
+	body, err := parseFailureReport(file)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	sendEmail(buffer.String(), *mailServer, *emailFrom, *emailTo)
+	if err := sendEmail(body, *mailServer, *emailFrom, *emailTo); err != nil {
+		log.Fatal(err)
+	}
 }
 
-func sendEmail(body string, mailserver string, fromemail string, toemail string) {
+func parseFailureReport(r io.Reader) (string, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return "", err
+	}
+
+	var body strings.Builder
+	for line := range bytes.Lines(data) {
+		if !bytes.Contains(bytes.ToLower(line), []byte("failed")) {
+			continue
+		}
+
+		hostPrefix, entryJSON, found := bytes.Cut(line, []byte("=>"))
+		if !found {
+			continue
+		}
+
+		var entry LogEntry
+		if err := json.Unmarshal(entryJSON, &entry); err != nil {
+			continue
+		}
+
+		host, found := extractHost(hostPrefix)
+		if !found {
+			continue
+		}
+
+		_, _ = fmt.Fprintf(&body, "Host: %s\nMessage: %s\n\n", bytes.TrimSpace(host), entry.Msg)
+	}
+
+	return body.String(), nil
+}
+
+func extractHost(hostPrefix []byte) ([]byte, bool) {
+	if _, afterOpen, found := bytes.Cut(hostPrefix, []byte("[")); found {
+		if host, _, found := bytes.Cut(afterOpen, []byte("]")); found {
+			return host, true
+		}
+	}
+
+	host, _, found := bytes.Cut(hostPrefix, []byte("|"))
+	if !found {
+		return nil, false
+	}
+
+	return bytes.TrimSpace(host), true
+}
+
+func sendEmail(body string, mailserver string, fromemail string, toemail string) error {
 	from := fromemail
 	to := toemail
 
-	msg := "From: " + from + "\n" +
-		"To: " + to + "\n" +
-		"Subject: Ansible Log Report\n\n" +
-		body
+	msg := buildMessage(from, to, body)
 
 	err := smtp.SendMail(mailserver,
 		nil,
-		from, []string{to}, []byte(msg))
+		from, []string{to}, msg)
 
 	if err != nil {
-		log.Printf("smtp error: %s", err)
-		return
+		return fmt.Errorf("smtp send mail: %w", err)
 	}
 
 	log.Print("Email sent")
+	return nil
+}
+
+func buildMessage(from string, to string, body string) []byte {
+	return []byte("From: " + from + "\n" +
+		"To: " + to + "\n" +
+		"Subject: Ansible Log Report\n\n" +
+		body)
 }
